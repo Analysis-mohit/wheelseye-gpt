@@ -66,8 +66,8 @@ import pandas as pd
 import openai
 import redshift_connector
 
-openai.api_key = "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"
 
+openai.api_key = st.secrets["openai"]["api_key"]
 # 🚀 Wheellytics by MK
 
 
@@ -80,13 +80,16 @@ import os
 st.set_page_config(page_title="🚀 Wheellytics by MK", layout="wide")
 
 # 🔐 Redshift Config (you can move to environment vars for security)
+# 🔐 Load secrets
+
 REDSHIFT_CONFIG = {
-    "host": os.getenv("REDSHIFT_HOST", "redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com"),
-    "port": int(os.getenv("REDSHIFT_PORT", 5439)),
-    "dbname": os.getenv("REDSHIFT_DB", "datalake"),
-    "user": os.getenv("REDSHIFT_USER", "kumarmohit"),
-    "password": os.getenv("REDSHIFT_PASS", "W1BbX99CjQYy")
+    "host": st.secrets["redshift"]["host"],
+    "port": st.secrets["redshift"]["port"],
+    "database": st.secrets["redshift"]["database"],
+    "user": st.secrets["redshift"]["user"],
+    "password": st.secrets["redshift"]["password"]
 }
+
 
 # 🧠 Dummy fallback data
 def get_dummy_df():
