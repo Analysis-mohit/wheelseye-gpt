@@ -5,7 +5,5 @@ openai
 psycopg2-binary
 streamlit
 pymongo
-openai
-pandas
 altair
 psycopg2-binary
