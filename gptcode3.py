@@ -59,116 +59,160 @@ read_sql = conn.cursor()
 
 
 # In[2]:
-
-
 import streamlit as st
 import pandas as pd
-import openai
-import redshift_connector
-
-
-openai.api_key = st.secrets["openai"]["api_key"]
-# 🚀 Wheellytics by MK
-
-
-
 import altair as alt
-import psycopg2
+import psycopg2 # ✅ Always FIRST in Streamlit  
 import os
+import openai
 
-# ✅ Always FIRST in Streamlit
-st.set_page_config(page_title="🚀 Wheellytics by MK", layout="wide")
+# ✅ Always FIRST in Streamlit 
 
 # 🔐 Redshift Config (you can move to environment vars for security)
-# 🔐 Load secrets
-
 REDSHIFT_CONFIG = {
-    "host": st.secrets["redshift"]["host"],
-    "port": st.secrets["redshift"]["port"],
-    "database": st.secrets["redshift"]["database"],
-    "user": st.secrets["redshift"]["user"],
-    "password": st.secrets["redshift"]["password"]
+    "host": os.getenv("REDSHIFT_HOST","redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com"),
+    "port": int(os.getenv("REDSHIFT_PORT", 5439)),
+    "database": os.getenv("REDSHIFT_DB", "datalake"),
+    "user": os.getenv("REDSHIFT_USER", "kumarmohit"),
+    "password": os.getenv("REDSHIFT_PASS", "W1BbX99CjQYy")
 }
 
 
-# 🧠 Dummy fallback data
-def get_dummy_df():
-    return pd.DataFrame({
-        "month": pd.date_range("2023-01-01", periods=6, freq="M"),
-        "trips_ended": [100, 120, 140, 160, 180, 200],
-        "ontime_delivery": [90, 110, 130, 150, 160, 190],
-        "percentage_ontime_delivery": [90, 91.7, 92.9, 93.75, 88.9, 95.0]
-    })
 
-# 🛠️ Run Redshift query
-def run_query(sql):
-    try:
-        conn = psycopg2.connect(**REDSHIFT_CONFIG)
-        return pd.read_sql_query(sql, conn)
-    except Exception as e:
-        st.warning(f"Query failed: {e}, using dummy data instead")
-        return get_dummy_df()
+openai.api_key = "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"
 
-# 🧠 Replace with actual GPT logic or hardcoded SQL
+
+
+
+st.set_page_config(page_title="🚀 Wheellytics by MK", layout="wide")
+# Streamlit Page Config
+st.title("🚀 Wheellytics by MK")
+st.markdown("Ask a question about trips, ratings, delays or escalations:")
+
+# OpenAI API Key
+# GPT System Prompt
+schema_knowledge = """
+You are a SQL expert analyst for Wheelseye. Always query the table: ss_1_consignerservice_stats_table_pms.
+
+Base columns:
+- demand_id: Unique trip ID
+- unloading_done_time: When the trip ended
+- ticket_code: 'T' in it means escalation raised
+- gtl_delay: 'ontime' means vehicle reached loading point on time
+- sys_trnst_dly: 'ontime' means delivery was on time
+- rating: 1-5 (0 = not rated)
+- tat_resolve_cat: 1 = resolved in time, 0 = delayed
+- type: if not in ['nan', 'NO_DAMAGE', 'None'], then damage occurred
+
+Joined table `mp_demand_details` adds:
+- region: Location name (NCR, PUNE, etc.)
+- ncr_flag: Filter flag
+- consigner_type: 'New consigner' or 'Repeat Consigner'
+
+Metrics:
+- Total Trips: COUNT(DISTINCT demand_id)
+- Tickets Raised: COUNT(DISTINCT ticket_code)
+- Tickets/Trip: tickets / total trips
+- On-Time Pickup: gtl_delay = 'ontime'
+- On-Time Delivery: sys_trnst_dly = 'ontime'
+- Damage Trips: type NOT IN ('nan', 'NO_DAMAGE', 'None')
+- Escalation Raised Trips: ticket_code IS NOT NULL
+- Escalation Solved On-Time: tat_resolve_cat = 1
+- Good Rated: rating = 5
+- Bad Rated: rating IN (1,2,3)
+- Rated Trips: rating > 0
+- Promoters: rating = 5
+- Passives: rating = 4
+- Detractors: rating IN (1,2,3)
+- NPS: Promoters - Detractors
+
+Filters supported:
+- Timeline: DAY, WEEK, MONTH (used in `date_trunc`)
+- Region: ct.region
+- NCR_FLAG: mp.ncr_flag
+- Consigner Type: mp.consigner_type
+"""
+# --- GPT SQL GENERATOR ---
+
+# --- GPT SQL GENERATOR ---
 def ask_gpt(question):
-    return """
-        WITH monthly_trips AS (
-            SELECT DATE_TRUNC('month', unloading_done_time) AS month,
-                   COUNT(DISTINCT demand_id) AS trips_ended
-            FROM ss_1_consignerservice_stats_table_pms
-            GROUP BY month
-        ),
-        monthly_ontime_deliveries AS (
-            SELECT DATE_TRUNC('month', unloading_done_time) AS month,
-                   COUNT(DISTINCT CASE WHEN sys_trnst_dly='in_tat' THEN demand_id END) AS ontime_delivery
-            FROM ss_1_consignerservice_stats_table_pms
-            GROUP BY month
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": schema_knowledge},
+                {"role": "user", "content": f"Write SQL query to answer: {question}. Label each block with -- metric_name: <metric_name> if multiple."}
+            ]
         )
-        SELECT
-            t.month,
-            t.trips_ended,
-            COALESCE(o.ontime_delivery, 0) AS ontime_delivery,
-            COALESCE(o.ontime_delivery, 0)*100.0 / t.trips_ended AS percentage_ontime_delivery
-        FROM monthly_trips t
-        LEFT JOIN monthly_ontime_deliveries o ON t.month = o.month
-        ORDER BY t.month DESC
-        LIMIT 6;
-    """
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        raise RuntimeError(f"GPT error: {e}")
 
-# 💬 Streamlit UI
-st.title("🚛 Wheellytics GPT")
-question = st.text_input("Ask your logistics question 👇", placeholder="e.g. Show me monthly on-time delivery trend")
+# --- REDSHIFT CONNECTION ---
+def get_redshift_connection():
+    return redshift_connector.connect(**REDSHIFT_CONFIG)
+
+def run_query(sql):
+    conn = get_redshift_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        result = cursor.fetchall()
+        columns = [col[0] for col in cursor.description]
+        return pd.DataFrame(result, columns=columns)
+    finally:
+        conn.close()
+
+# --- MULTI-BLOCK SQL SPLITTER ---
+def split_sql_blocks(sql_blob):
+    import re
+    blocks = {}
+    matches = re.split(r'--\s*metric_name:\s*(\w+)', sql_blob)
+    for i in range(1, len(matches), 2):
+        metric = matches[i].strip()
+        query = matches[i+1].strip()
+        blocks[metric] = query
+    return blocks
+
+
+question = st.text_input("Your question", placeholder="e.g. Show month on month good ratings, delays and escalations")
 
 if question:
     with st.spinner("🧠 MK is thinking and creating your stuff..."):
         try:
-            sql = ask_gpt(question)
-            st.code(sql, language="sql")
-            df = run_query(sql)
+            sql_blob = ask_gpt(question)
+            st.code(sql_blob, language="sql")
 
-            if df.empty:
-                st.warning("No data found for this query.")
-            else:
-                st.success("✨ Boom! Here's your answer:")
+            sql_blocks = split_sql_blocks(sql_blob)
+
+            for metric_name, sub_sql in sql_blocks.items():
+                st.subheader(f"📊 {metric_name.replace('_', ' ').title()}")
+                try:
+                    df = run_query(sub_sql)
+                except Exception as e:
+                    st.warning(f"Query failed: {e}, using dummy data instead")
+                    df = pd.DataFrame({
+                        "month": pd.date_range(start="2024-01-01", periods=6, freq="MS"),
+                        metric_name: np.random.randint(50, 200, size=6)
+                    })
+
                 st.dataframe(df)
 
-                # ⏱️ Try visualizing time-series
-                date_cols = [col for col in df.columns if 'date' in col.lower() or 'month' in col.lower()]
+                date_cols = [col for col in df.columns if 'date' in col.lower() or 'month' in col.lower() or 'week' in col.lower()]
                 if date_cols:
                     time_col = date_cols[0]
                     metric_cols = [col for col in df.columns if col != time_col]
-
                     for metric in metric_cols:
                         chart = alt.Chart(df).mark_line(point=True).encode(
-                            x=f'{time_col}:T',
-                            y=f'{metric}:Q',
+                            x=f"{time_col}:T",
+                            y=f"{metric}:Q",
                             tooltip=[time_col, metric]
                         ).properties(
-                            title=f"{metric} Over Time",
+                            title=f"{metric.replace('_', ' ').title()} Over Time",
                             width=700,
                             height=400
                         )
                         st.altair_chart(chart, use_container_width=True)
 
         except Exception as e:
-            st.error(f"❌ Something went wrong: {e}")
+            st.error(f"Something went wrong: {e}")
