@@ -28,8 +28,9 @@ from google.oauth2 import service_account
 from functools import reduce
 from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, create_engine, select, inspect, and_, or_
 from oauth2client.service_account import ServiceAccountCredentials
-usr='kumarmohit'
-pasw='W1BbX99CjQYy'
+usr=st.secrets["redshift"]["user"]
+pasw='st.secrets["redshift"]["password"]
+
 galaxy=sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com:5439/datalake".format(usr,pasw))
 scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
 # credentials = ServiceAccountCredentials.from_json_keyfile_name("mohit_bq.json", scope)
@@ -46,45 +47,40 @@ gc = gspread.authorize(credentials)
 
 import redshift_connector
 conn = redshift_connector.connect(
-    host='redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com',
-    port=5439,
-    database='datalake',
-    user='kumarmohit',
-    password='W1BbX99CjQYy'
+    "host": st.secrets["redshift"]["host"],
+    "port": st.secrets["redshift"]["port"],
+    "database": st.secrets["redshift"]["database"],
+    "user": st.secrets["redshift"]["user"],
+    "password": st.secrets["redshift"]["password"]
  )
 read_sql = conn.cursor()
 
 
 # In[3]:
 
+# gptcode3.py
 
-# In[2]:
 import streamlit as st
 import pandas as pd
 import altair as alt
-import psycopg2 # ✅ Always FIRST in Streamlit  
-import os
 import openai
+import psycopg2
+import os
 
-# ✅ Always FIRST in Streamlit 
 
-# 🔐 Redshift Config (you can move to environment vars for security)
+# 🔐 Load secrets securely
 REDSHIFT_CONFIG = {
-    "host": os.getenv("REDSHIFT_HOST","redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com"),
-    "port": int(os.getenv("REDSHIFT_PORT", 5439)),
-    "database": os.getenv("REDSHIFT_DB", "datalake"),
-    "user": os.getenv("REDSHIFT_USER", "kumarmohit"),
-    "password": os.getenv("REDSHIFT_PASS", "W1BbX99CjQYy")
+    "host": st.secrets["redshift"]["host"],
+    "port": st.secrets["redshift"]["port"],
+    "database": st.secrets["redshift"]["database"],
+    "user": st.secrets["redshift"]["user"],
+    "password": st.secrets["redshift"]["password"]
 }
 
-
-
-openai.api_key = "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"
-
-
-
+openai.api_key = st.secrets["openai"]["api_key"]
 
 st.set_page_config(page_title="🚀 Wheellytics by MK", layout="wide")
+
 # Streamlit Page Config
 st.title("🚀 Wheellytics by MK")
 st.markdown("Ask a question about trips, ratings, delays or escalations:")
@@ -132,7 +128,6 @@ Filters supported:
 - NCR_FLAG: mp.ncr_flag
 - Consigner Type: mp.consigner_type
 """
-# --- GPT SQL GENERATOR ---
 
 # --- GPT SQL GENERATOR ---
 def ask_gpt(question):
