@@ -29,7 +29,7 @@ from functools import reduce
 from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, create_engine, select, inspect, and_, or_
 from oauth2client.service_account import ServiceAccountCredentials
 usr=st.secrets["redshift"]["user"]
-pasw='st.secrets["redshift"]["password"]
+pasw=st.secrets["redshift"]["password"]
 
 galaxy=sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com:5439/datalake".format(usr,pasw))
 scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
