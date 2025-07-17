@@ -47,12 +47,12 @@ gc = gspread.authorize(credentials)
 
 import redshift_connector
 conn = redshift_connector.connect(
-    "host": st.secrets["redshift"]["host"],
-    "port": st.secrets["redshift"]["port"],
-    "database": st.secrets["redshift"]["database"],
-    "user": st.secrets["redshift"]["user"],
-    "password": st.secrets["redshift"]["password"]
- )
+    host     = st.secrets["redshift"]["host"],
+    port     = int(st.secrets["redshift"]["port"]),
+    database = st.secrets["redshift"]["database"],
+    user     = st.secrets["redshift"]["user"],
+    password = st.secrets["redshift"]["password"]
+)
 read_sql = conn.cursor()
 
 
