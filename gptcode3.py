@@ -69,7 +69,6 @@ REDSHIFT_CONFIG = {
     "user":     st.secrets["redshift"]["user"],
     "password": st.secrets["redshift"]["password"],
 }
-OPENAI_KEY = "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"
 
 # --- SCHEMA AND GPT PROMPT ---
 
