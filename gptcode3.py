@@ -33,23 +33,22 @@ from google.oauth2 import service_account
 from functools import reduce
 from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, create_engine, select, inspect, and_, or_
 from oauth2client.service_account import ServiceAccountCredentials
-usr='kumarmohit'
-pasw='W1BbX99CjQYy'
-galaxy=sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com:5439/datalake".format(usr,pasw))
-scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
 
 
 # In[2]:
 
 
 import redshift_connector
-conn = redshift_connector.connect(
-    host='redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com',
-    port=5439,
-    database='datalake',
-    user='kumarmohit',
-    password='W1BbX99CjQYy'
- )
+
+REDSHIFT_CONFIG = {
+    "host":     st.secrets["redshift"]["host"],
+    "port":     int(st.secrets["redshift"]["port"]),
+    "database": st.secrets["redshift"]["database"],
+    "user":     st.secrets["redshift"]["user"],
+    "password": st.secrets["redshift"]["password"],
+}
+OPENAI_KEY = st.secrets["openai"]["api_key"]
+
 read_sql = conn.cursor()
 
 
@@ -80,15 +79,13 @@ st.markdown("Ask a question about placements,take rate, trips, ratings, delays o
 
 # --- CONFIGURE YOUR REDSHIFT CONNECTION HERE ---
 REDSHIFT_CONFIG = {
-    "host": "redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com",
-    "database": "datalake",
-    "user": "kumarmohit",
-    "password": "W1BbX99CjQYy",
-    "port": 5439,
+    "host":     st.secrets["redshift"]["host"],
+    "port":     int(st.secrets["redshift"]["port"]),
+    "database": st.secrets["redshift"]["database"],
+    "user":     st.secrets["redshift"]["user"],
+    "password": st.secrets["redshift"]["password"],
 }
-
-# --- OPENAI API KEY ---
-openai.api_key="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"
+OPENAI_KEY = st.secrets["openai"]["api_key"]
 
 # --- SCHEMA AND GPT PROMPT ---
 
