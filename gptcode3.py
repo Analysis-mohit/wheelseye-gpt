@@ -36,22 +36,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 
 # In[2]:
-
-
-import redshift_connector
-
-REDSHIFT_CONFIG = {
-    "host":     st.secrets["redshift"]["host"],
-    "port":     int(st.secrets["redshift"]["port"]),
-    "database": st.secrets["redshift"]["database"],
-    "user":     st.secrets["redshift"]["user"],
-    "password": st.secrets["redshift"]["password"],
-}
-OPENAI_KEY = st.secrets["openai"]["api_key"]
-
-read_sql = conn.cursor()
-
-
 # In[3]:
 
 
