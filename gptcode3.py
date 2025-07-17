@@ -1,97 +1,39 @@
 #!/usr/bin/env python
-# coding: utf-8
+# -*- coding: utf-8 -*-
 
-# In[1]:
+"""
+Wheellytics by MK – Streamlit GPT-to-SQL dashboard
+-------------------------------------------------
+Run locally with:
+$ streamlit run wheellytics_app.py
+"""
 
-
+import re
+import os
 import datetime as dt
-from datetime import datetime, timedelta
-from datetime import date
-from dateutil.relativedelta import relativedelta
 import numpy as np
 import pandas as pd
-import time as tm
-from pymongo import MongoClient
-import calendar
-from tqdm import tqdm
-import sqlalchemy
-import warnings
-import time
-import gspread
-import gspread_dataframe as gd
-from oauth2client.service_account import ServiceAccountCredentials
-import requests
-import json
-import google.auth
-# from google.cloud import bigquery
-from google.oauth2 import service_account
-from functools import reduce
-from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, create_engine, select, inspect, and_, or_
-from oauth2client.service_account import ServiceAccountCredentials
-usr=st.secrets["redshift"]["user"]
-pasw=st.secrets["redshift"]["password"]
-
-galaxy=sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@redshift-cluster-2.ct9kqx1dcuaa.ap-south-1.redshift.amazonaws.com:5439/datalake".format(usr,pasw))
-scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
-# credentials = ServiceAccountCredentials.from_json_keyfile_name("mohit_bq.json", scope)
-credentials = ServiceAccountCredentials.from_json_keyfile_name('/Users/mohit/Downloads/mohit_kumar_bq.json', scope)
-
-gc = gspread.authorize(credentials)
-
-
-# In[2]:
-
-
-# In[2]:
-
-
-import redshift_connector
-conn = redshift_connector.connect(
-    host     = st.secrets["redshift"]["host"],
-    port     = int(st.secrets["redshift"]["port"]),
-    database = st.secrets["redshift"]["database"],
-    user     = st.secrets["redshift"]["user"],
-    password = st.secrets["redshift"]["password"]
-)
-read_sql = conn.cursor()
-
-
-# In[3]:
-
-# gptcode3.py
-
-import streamlit as st
-import pandas as pd
 import altair as alt
+import redshift_connector
+import streamlit as st
 import openai
-import psycopg2
-import os
-from functools import reduce
-from sqlalchemy import ...
-from oauth2client.service_account import ...
-usr = st.secrets["redshift"]["user"] 
 
-
-# 🔐 Load secrets securely
+# ------------------------------
+# 1️⃣  Secrets & globals
+# ------------------------------
 REDSHIFT_CONFIG = {
-    "host": st.secrets["redshift"]["host"],
-    "port": st.secrets["redshift"]["port"],
+    "host":     st.secrets["redshift"]["host"],
+    "port":     int(st.secrets["redshift"]["port"]),
     "database": st.secrets["redshift"]["database"],
-    "user": st.secrets["redshift"]["user"],
-    "password": st.secrets["redshift"]["password"]
+    "user":     st.secrets["redshift"]["user"],
+    "password": st.secrets["redshift"]["password"],
 }
+OPENAI_KEY = st.secrets["openai"]["api_key"]
 
-openai.api_key = st.secrets["openai"]["api_key"]
-
-st.set_page_config(page_title="🚀 Wheellytics by MK", layout="wide")
-
-# Streamlit Page Config
-st.title("🚀 Wheellytics by MK")
-st.markdown("Ask a question about trips, ratings, delays or escalations:")
-
-# OpenAI API Key
-# GPT System Prompt
-schema_knowledge = """
+# ------------------------------
+# 2️⃣  System prompt for GPT
+# ------------------------------
+SCHEMA_KNOWLEDGE = """
 You are a SQL expert analyst for Wheelseye. Always query the table: ss_1_consignerservice_stats_table_pms.
 
 Base columns:
@@ -133,85 +75,88 @@ Filters supported:
 - Consigner Type: mp.consigner_type
 """
 
-# --- GPT SQL GENERATOR ---
-def ask_gpt(question):
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": schema_knowledge},
-                {"role": "user", "content": f"Write SQL query to answer: {question}. Label each block with -- metric_name: <metric_name> if multiple."}
-            ]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        raise RuntimeError(f"GPT error: {e}")
+# ------------------------------
+# 3️⃣  Helper functions
+# ------------------------------
+def ask_gpt(question: str) -> str:
+    openai.api_key = OPENAI_KEY
+    resp = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": SCHEMA_KNOWLEDGE},
+            {"role": "user", "content": f"Write SQL query to answer: {question}. "
+                                        f"Label each block with -- metric_name: <metric_name> if multiple."}
+        ]
+    )
+    return resp.choices[0].message.content.strip()
 
-# --- REDSHIFT CONNECTION ---
-def get_redshift_connection():
-    return redshift_connector.connect(**REDSHIFT_CONFIG)
-
-def run_query(sql):
-    conn = get_redshift_connection()
+def run_query(sql: str) -> pd.DataFrame:
+    conn = redshift_connector.connect(**REDSHIFT_CONFIG)
     try:
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        result = cursor.fetchall()
-        columns = [col[0] for col in cursor.description]
-        return pd.DataFrame(result, columns=columns)
+        cur = conn.cursor()
+        cur.execute(sql)
+        cols = [c[0] for c in cur.description]
+        rows = cur.fetchall()
+        return pd.DataFrame(rows, columns=cols)
     finally:
         conn.close()
 
-# --- MULTI-BLOCK SQL SPLITTER ---
-def split_sql_blocks(sql_blob):
-    import re
+def split_sql_blocks(blob: str):
+    parts = re.split(r"--\s*metric_name:\s*(\w+)", blob)
     blocks = {}
-    matches = re.split(r'--\s*metric_name:\s*(\w+)', sql_blob)
-    for i in range(1, len(matches), 2):
-        metric = matches[i].strip()
-        query = matches[i+1].strip()
-        blocks[metric] = query
+    for i in range(1, len(parts), 2):
+        blocks[parts[i].strip()] = parts[i+1].strip()
     return blocks
 
+# ------------------------------
+# 4️⃣  Streamlit UI
+# ------------------------------
+st.set_page_config(page_title="🚀 Wheellytics by MK", layout="wide")
+st.title("🚀 Wheellytics by MK")
+st.markdown("Ask a question about trips, ratings, delays or escalations:")
 
-question = st.text_input("Your question", placeholder="e.g. Show month on month good ratings, delays and escalations")
+question = st.text_input(
+    "Your question",
+    placeholder="e.g. Show month on month good ratings, delays and escalations"
+)
 
 if question:
-    with st.spinner("🧠 MK is thinking and creating your stuff..."):
-        try:
-            sql_blob = ask_gpt(question)
-            st.code(sql_blob, language="sql")
+    with st.spinner("🧠 MK is thinking and creating your stuff…"):
+        sql_blob = ask_gpt(question)
+        st.code(sql_blob, language="sql")
 
-            sql_blocks = split_sql_blocks(sql_blob)
+        blocks = split_sql_blocks(sql_blob)
+        for metric, sql in blocks.items():
+            st.subheader(f"📊 {metric.replace('_', ' ').title()}")
+            try:
+                df = run_query(sql)
+            except Exception as e:
+                st.warning(f"Query failed: {e}. Displaying dummy data.")
+                df = pd.DataFrame({
+                    "month": pd.date_range("2024-01-01", periods=6, freq="MS"),
+                    metric:  np.random.randint(50, 200, 6)
+                })
 
-            for metric_name, sub_sql in sql_blocks.items():
-                st.subheader(f"📊 {metric_name.replace('_', ' ').title()}")
-                try:
-                    df = run_query(sub_sql)
-                except Exception as e:
-                    st.warning(f"Query failed: {e}, using dummy data instead")
-                    df = pd.DataFrame({
-                        "month": pd.date_range(start="2024-01-01", periods=6, freq="MS"),
-                        metric_name: np.random.randint(50, 200, size=6)
-                    })
+            st.dataframe(df)
 
-                st.dataframe(df)
-
-                date_cols = [col for col in df.columns if 'date' in col.lower() or 'month' in col.lower() or 'week' in col.lower()]
-                if date_cols:
-                    time_col = date_cols[0]
-                    metric_cols = [col for col in df.columns if col != time_col]
-                    for metric in metric_cols:
-                        chart = alt.Chart(df).mark_line(point=True).encode(
-                            x=f"{time_col}:T",
-                            y=f"{metric}:Q",
-                            tooltip=[time_col, metric]
-                        ).properties(
-                            title=f"{metric.replace('_', ' ').title()} Over Time",
+            # Auto-chart any date column
+            date_cols = [c for c in df.columns if any(k in c.lower() for k in ("date", "month", "week"))]
+            if date_cols:
+                date_col = date_cols[0]
+                value_cols = [c for c in df.columns if c != date_col]
+                for val in value_cols:
+                    chart = (
+                        alt.Chart(df)
+                        .mark_line(point=True)
+                        .encode(
+                            x=f"{date_col}:T",
+                            y=f"{val}:Q",
+                            tooltip=[date_col, val]
+                        )
+                        .properties(
+                            title=f"{val.replace('_', ' ').title()} Over Time",
                             width=700,
                             height=400
                         )
-                        st.altair_chart(chart, use_container_width=True)
-
-        except Exception as e:
-            st.error(f"Something went wrong: {e}")
+                    )
+                    st.altair_chart(chart, use_container_width=True)
