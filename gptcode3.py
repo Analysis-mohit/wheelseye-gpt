@@ -66,6 +66,10 @@ import altair as alt
 import openai
 import psycopg2
 import os
+from functools import reduce
+from sqlalchemy import ...
+from oauth2client.service_account import ...
+usr = st.secrets["redshift"]["user"] 
 
 
 # 🔐 Load secrets securely
